@@ -1,5 +1,8 @@
 import { fetchConjunctionDetail, fetchPcHistory } from "@/lib/api";
 import Link from "next/link";
+
+export const dynamic = "force-dynamic";
+
 import AIExplainer from "@/components/AIExplainer";
 import PcEvolutionChart from "@/components/PcEvolutionChart";
 import ManeuverPanel from "@/components/ManeuverPanel";

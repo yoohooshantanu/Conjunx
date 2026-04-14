@@ -1,4 +1,8 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// Server components need absolute URLs. Client components need relative URLs to use the proxy (CORS).
+export const API_URL = typeof window !== "undefined"
+  ? "/api"
+  : (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000");
+
 
 export async function fetchConjunctions() {
   const res = await fetch(`${API_URL}/conjunctions`, { cache: "no-store" });

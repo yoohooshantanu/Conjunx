@@ -1,6 +1,9 @@
 import { fetchConjunctions } from "@/lib/api";
 import ConjunctionList from "@/components/ConjunctionList";
 
+export const dynamic = "force-dynamic";
+
+
 export default async function Home() {
   let conjunctions = [];
   try {
