@@ -14,7 +14,8 @@ Cesium.Ion.defaultAccessToken = process.env.NEXT_PUBLIC_CESIUM_TOKEN || "";
 // FIX: Disable ImageBitmap in Chromium browsers. It has known bugs with Cesium's 
 // Texture Atlas allocation that cause text labels and points to render as static/noise boxes!
 if (typeof Cesium !== "undefined" && Cesium.FeatureDetection) {
-  Cesium.FeatureDetection.supportsImageBitmapOptions = false;
+  // @ts-ignore
+  (Cesium.FeatureDetection as any).supportsImageBitmapOptions = false;
 }
 
 interface CesiumViewerProps {
