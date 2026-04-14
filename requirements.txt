@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+httpx
+sgp4
+numpy
+scipy
+skyfield
+openai
+python-dotenv
+pydantic
+aiosqlite
