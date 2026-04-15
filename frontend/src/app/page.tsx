@@ -19,7 +19,7 @@ export default async function Home() {
   return (
     <main className="min-h-screen">
       {/* Top bar */}
-      <header className="border-b border-[#30363d] bg-[#161b22] px-6 py-3 flex items-center justify-between">
+      <header className="border-b border-[#30363d] bg-[#161b22] px-4 md:px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="flex items-center gap-4">
           <h1 className="text-[15px] font-semibold text-[#e6edf3] tracking-tight">
             CONJUNX
@@ -29,7 +29,7 @@ export default async function Home() {
           </span>
         </div>
 
-        <div className="flex items-center gap-5 text-[12px] font-data">
+        <div className="flex flex-wrap items-center gap-3 md:gap-5 text-[12px] font-data">
           <span className="text-[#7d8590]">
             {totalCount} events
           </span>
@@ -47,8 +47,10 @@ export default async function Home() {
       </header>
 
       {/* Event list */}
-      <div className="px-6 py-0">
-        <ConjunctionList data={conjunctions} />
+      <div className="w-full overflow-x-auto">
+        <div className="min-w-[650px]">
+          <ConjunctionList data={conjunctions} />
+        </div>
       </div>
     </main>
   );

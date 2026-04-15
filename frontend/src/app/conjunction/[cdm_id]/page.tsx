@@ -96,18 +96,18 @@ export default async function ConjunctionDetail({ params }: { params: Promise<{ 
   return (
     <main className="min-h-screen flex flex-col h-screen">
       {/* Header */}
-      <header className="px-4 py-2 border-b border-[#30363d] bg-[#161b22] flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="text-[#484f58] hover:text-[#e6edf3] transition-colors text-[13px]">
+      <header className="px-4 py-3 border-b border-[#30363d] bg-[#161b22] flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
+        <div className="flex items-start md:items-center gap-3">
+          <Link href="/" className="text-[#484f58] hover:text-[#e6edf3] transition-colors text-[13px] mt-0.5 md:mt-0">
             ←
           </Link>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-[14px] font-semibold text-[#e6edf3]">
+              <h1 className="text-[14px] font-semibold text-[#e6edf3] break-words">
                 {sat1Name} <span className="text-[#484f58] text-[12px]">vs</span> {sat2Name}
               </h1>
             </div>
-            <div className="font-data text-[11px] text-[#484f58] flex items-center gap-3">
+            <div className="font-data text-[11px] text-[#484f58] flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5">
               <span>CDM {cdm_id}</span>
               {norad1 && <span>NORAD {norad1} / {norad2}</span>}
               <span>TCA {tcaFormatted}</span>
@@ -116,7 +116,7 @@ export default async function ConjunctionDetail({ params }: { params: Promise<{ 
         </div>
 
         {/* Quick stats — plain text, no badges */}
-        <div className="flex items-center gap-5 font-data text-[12px]">
+        <div className="flex items-center gap-5 font-data text-[12px] self-start md:self-auto pl-6 md:pl-0">
           <div className="text-right">
             <div className="text-[9px] text-[#484f58] uppercase tracking-wider">Miss</div>
             <div className="text-[#7d8590]">
@@ -137,9 +137,9 @@ export default async function ConjunctionDetail({ params }: { params: Promise<{ 
       </header>
 
       {/* Two-column layout */}
-      <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
+      <div className="flex-1 md:overflow-hidden overflow-y-auto flex flex-col md:flex-row">
         {/* Left: 60% — Cesium globe */}
-        <div className="w-full md:w-[60%] h-full relative">
+        <div className="w-full md:w-[60%] h-[50vh] min-h-[400px] md:h-full relative shrink-0">
           <CesiumWrapper
             cdmId={cdm_id}
             tca={tca}
@@ -151,9 +151,9 @@ export default async function ConjunctionDetail({ params }: { params: Promise<{ 
         </div>
 
         {/* Right: 40% — Data panels */}
-        <div className="w-full md:w-[40%] h-full overflow-y-auto bg-[#0d1117] border-l border-[#30363d] shrink-0">
+        <div className="w-full md:w-[40%] md:h-full md:overflow-y-auto bg-[#0d1117] md:border-l border-t md:border-t-0 border-[#30363d] shrink-0">
           {/* Satellite metadata — two panels side by side */}
-          <div className="grid grid-cols-2 gap-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-0 border-b md:border-b-0 border-[#30363d]">
             <SatMetadataPanel title={`SAT1 · ${sat1Name}`} data={sat1Data} fields={sat1Fields} />
             <SatMetadataPanel title={`SAT2 · ${sat2Name}`} data={sat2Data} fields={sat2Fields} />
           </div>
