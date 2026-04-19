@@ -60,7 +60,10 @@ export default function CesiumViewer({
     viewer.scene.globe.enableLighting = true;
     viewer.scene.fog.enabled = true;
     viewer.scene.requestRenderMode = false;
-    viewer.scene.moon = new Cesium.Moon();
+    viewer.scene.moon = new Cesium.Moon({
+      textureUrl: "/Cesium/Assets/Textures/moonSmall.jpg",
+      show: true
+    });
     viewerRef.current = viewer;
 
     const tcaTime = Cesium.JulianDate.fromIso8601(tca);
