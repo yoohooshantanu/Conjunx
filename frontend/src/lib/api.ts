@@ -53,3 +53,9 @@ export async function fetchPcHistory(id: string) {
   if (!res.ok) throw new Error("Failed to fetch Pc history");
   return res.json();
 }
+
+export async function fetchAiExplanation(id: string) {
+  const res = await fetch(`${API_URL}/conjunctions/${id}/explanation`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch AI explanation");
+  return res.json();
+}

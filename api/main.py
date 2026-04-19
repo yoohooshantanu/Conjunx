@@ -326,23 +326,43 @@ async def conjunction_detail(cdm_id: str):
     risk = score_conjunction(result, maneuver, satcat_1, satcat_2)
     result["risk"] = risk.to_dict()
 
-    # AI explanation
+    return result
+
+@app.get("/conjunctions/{cdm_id}/explanation")
+async def conjunction_explanation(cdm_id: str):
+    """Fetch AI explanation separately to avoid blocking main detail load."""
+    if cdm_id == "DEMO-001":
+        sample = get_sample_conjunction()
+        return sample.get("explanation", {})
+        
+    try:
+        result = await get_cached_conjunction(cdm_id)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+
+    satcat_1 = result.get("satcat_1", {})
+    satcat_2 = result.get("satcat_2", {})
+    maneuver = result.get("maneuver", {})
+
+    risk = score_conjunction(result, maneuver, satcat_1, satcat_2)
+
     try:
         explanation = await generate_explanation(
             result, maneuver, risk.to_dict(), satcat_1, satcat_2
         )
-        result["explanation"] = explanation
+        return explanation
     except Exception as exc:
         logger.error("AI explanation failed: %s", exc)
-        result["explanation"] = {
+        return {
             "situation_summary": "Explanation unavailable.",
             "risk_rationale": "N/A",
             "maneuver_recommendation": "N/A",
             "no_action_scenario": "N/A",
             "operator_urgency": "MONITOR",
         }
-
-    return result
 
 
 @app.get("/conjunctions/{cdm_id}/pc-history")

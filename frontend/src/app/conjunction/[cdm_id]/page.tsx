@@ -1,5 +1,6 @@
-import { fetchConjunctionDetail, fetchPcHistory } from "@/lib/api";
+import { fetchConjunctionDetail, fetchPcHistory, fetchAiExplanation } from "@/lib/api";
 import Link from "next/link";
+import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +10,15 @@ import ManeuverPanel from "@/components/ManeuverPanel";
 import CesiumWrapper from "@/components/CesiumWrapper";
 import ManeuverTradeoff from "@/components/ManeuverTradeoff";
 import PcVerificationPanel from "@/components/PcVerificationPanel";
+
+async function AIExplainerServer({ cdmId }: { cdmId: string }) {
+  try {
+    const explanation = await fetchAiExplanation(cdmId);
+    return <AIExplainer explanation={explanation} />;
+  } catch (e) {
+    return <div className="px-4 py-3 text-[#7d8590] text-[12px]">AI Brief currently unavailable.</div>;
+  }
+}
 
 function SatMetadataPanel({ title, data, fields }: { title: string; data: Record<string, any>; fields: string[] }) {
   return (
@@ -37,9 +47,14 @@ export default async function ConjunctionDetail({ params }: { params: Promise<{ 
   let data: any;
   let pcHistory: any[] = [];
 
-  try {
-    data = await fetchConjunctionDetail(cdm_id);
-  } catch (e) {
+  const [dataResult, pcHistoryResult] = await Promise.allSettled([
+    fetchConjunctionDetail(cdm_id),
+    fetchPcHistory(cdm_id)
+  ]);
+
+  if (dataResult.status === 'fulfilled') {
+    data = dataResult.value;
+  } else {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="border border-[#30363d] bg-[#161b22] p-6 text-center max-w-md">
@@ -50,9 +65,9 @@ export default async function ConjunctionDetail({ params }: { params: Promise<{ 
     );
   }
 
-  try {
-    pcHistory = await fetchPcHistory(cdm_id);
-  } catch {}
+  if (pcHistoryResult.status === 'fulfilled') {
+    pcHistory = pcHistoryResult.value;
+  }
 
   const tca = data.TCA || data.tca || new Date().toISOString();
   const missDistance = parseFloat(data.MISS_DISTANCE || data.MIN_RNG) || 1000;
@@ -183,7 +198,9 @@ export default async function ConjunctionDetail({ params }: { params: Promise<{ 
 
           {/* AI Brief — plain paragraphs with thin top border separator */}
           <div className="border-t border-[#30363d]">
-            <AIExplainer explanation={data.explanation} />
+            <Suspense fallback={<div className="px-4 py-3 text-[#7d8590] text-[12px] flex items-center gap-2"><span className="animate-spin text-[10px] inline-block">⏳</span> Analyzing situation...</div>}>
+              <AIExplainerServer cdmId={cdm_id} />
+            </Suspense>
           </div>
         </div>
       </div>
