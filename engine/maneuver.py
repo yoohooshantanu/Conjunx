@@ -245,35 +245,48 @@ def evaluate_tradeoff(
     """
     Evaluate the result of a specific requested ΔV maneuver.
     Inverts the solver to return the resulting miss distance and Pc.
+
+    For past-TCA events, uses a hypothetical lead time so the slider
+    always produces meaningful results for what-if analysis.
     """
     now = datetime.now(timezone.utc)
     tca = event.tca
     if tca.tzinfo is None:
         tca = tca.replace(tzinfo=timezone.utc)
-    time_to_tca_s = max((tca - now).total_seconds(), 1.0)
-    
+    real_time_to_tca_s = (tca - now).total_seconds()
+
     burn_lead_s = burn_lead_hours * 3600.0
-    effective_time = min(time_to_tca_s, burn_lead_s)
-    
+
+    # If TCA is in the past (or < 60s away), use hypothetical lead time
+    # so the tradeoff slider always produces meaningful visual feedback.
+    hypothetical = real_time_to_tca_s < 60.0
+    if hypothetical:
+        effective_time = burn_lead_s  # assume ideal 6-hour lead
+    else:
+        effective_time = min(max(real_time_to_tca_s, 1.0), burn_lead_s)
+
     # Delta-V to Delta-Miss mapping (linear approximation)
     velocity = event.primary.speed() if event.primary else 7_500.0
     delta_miss = delta_v_mps * effective_time * (max(velocity, 1.0) / 100.0) ** -1
     # Assume we always thrust optimally to increase miss distance
     new_miss_distance = event.miss_distance + delta_miss
-    
+
     new_pc = _estimate_pc_after(
         event.pc, event.miss_distance, new_miss_distance, event.combined_covariance
     )
-    
+
     fuel = _fuel_cost(delta_v_mps, mass_kg, isp)
-    
+
     feasible = delta_v_mps <= 10.0
-    
+
     return {
         "delta_v_mps": delta_v_mps,
         "new_miss_distance_m": round(new_miss_distance, 1),
         "new_pc": new_pc,
         "fuel_cost_kg": round(fuel, 4),
         "feasible": feasible,
-        "effective_time_s": effective_time
+        "effective_time_s": effective_time,
+        "hypothetical": hypothetical,
+        "original_miss_distance_m": round(event.miss_distance, 1),
+        "original_pc": event.pc,
     }

@@ -36,6 +36,22 @@ function DataRow({ label, value, unit }: { label: string; value: string; unit?: 
   );
 }
 
+function formatDeltaV(dv: number): JSX.Element {
+  if (dv === 0) return <><span className="font-data text-[#e6edf3]">0.00</span><span className="text-[#484f58] ml-0.5">m/s</span></>;
+  
+  if (dv >= 0.1) {
+    return <><span className="font-data text-[#e6edf3]">+{dv.toFixed(4)}</span><span className="text-[#484f58] ml-0.5">m/s</span></>;
+  }
+  
+  const cm = dv * 100;
+  if (cm >= 0.1) {
+    return <><span className="font-data text-[#e6edf3]">+{cm.toFixed(2)}</span><span className="text-[#484f58] ml-0.5">cm/s</span></>;
+  }
+  
+  const mm = dv * 1000;
+  return <><span className="font-data text-[#e6edf3]">+{mm.toFixed(3)}</span><span className="text-[#484f58] ml-0.5">mm/s</span></>;
+}
+
 export default function ManeuverPanel({ maneuver, cdmId }: { maneuver: ManeuverData; cdmId: string }) {
   const [data, setData] = useState(maneuver);
   const [loading, setLoading] = useState(false);
@@ -91,7 +107,7 @@ export default function ManeuverPanel({ maneuver, cdmId }: { maneuver: ManeuverD
       >
         <span className="text-[14px] shrink-0">🚀</span>
         <div className="text-[11px] leading-snug">
-          <span className="font-data text-[#e6edf3]">+{data.delta_v_mps.toFixed(4)} m/s</span>
+          {formatDeltaV(data.delta_v_mps)}
           <span className="text-[#7d8590]"> along-track → Pc drops </span>
           <span className="font-data text-[#e6edf3]">{data.pc_before.toExponential(1)}</span>
           <span className="text-[#7d8590]"> → </span>
@@ -103,7 +119,12 @@ export default function ManeuverPanel({ maneuver, cdmId }: { maneuver: ManeuverD
       </div>
 
       <div className="space-y-0">
-        <DataRow label="ΔV" value={data.delta_v_mps.toFixed(4)} unit="m/s" />
+        <div className="flex justify-between items-center py-[2px]">
+          <span className="text-[10px] text-[#484f58] uppercase">ΔV</span>
+          <span className="font-data text-[11px] text-[#7d8590]">
+            {formatDeltaV(data.delta_v_mps)}
+          </span>
+        </div>
         <DataRow label="Burn time" value={parseBurnTime(data.burn_time)} />
         <DataRow label="Fuel cost" value={data.fuel_cost_kg.toFixed(3)} unit="kg" />
         <DataRow label="Pc before" value={data.pc_before.toExponential(2)} />

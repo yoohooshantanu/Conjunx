@@ -44,7 +44,23 @@ function formatPc(pc: number): string {
 function isDebris(objectType: string | undefined): boolean {
   if (!objectType) return false;
   const t = objectType.toUpperCase();
-  return t.includes("DEBRIS") || t.includes("DEB") || t === "TBA";
+  return t.includes("DEBRIS") || t.includes("DEB") || t === "TBA" || t.includes("ROCKET BODY") || t.includes("R/B");
+}
+
+function formatDeltaV(dv: number): JSX.Element {
+  if (dv === 0) return <><span className="text-[#484f58]">0.00</span><span className="text-[#484f58] text-[10px] ml-0.5 font-normal">m/s</span></>;
+  
+  if (dv >= 0.1) {
+    return <><span className="text-[#cdd9e5]">{dv.toFixed(2)}</span><span className="text-[#484f58] text-[10px] ml-0.5 font-normal">m/s</span></>;
+  }
+  
+  const cm = dv * 100;
+  if (cm >= 0.1) {
+    return <><span className="text-[#cdd9e5]">{cm.toFixed(1)}</span><span className="text-[#484f58] text-[10px] ml-0.5 font-normal">cm/s</span></>;
+  }
+  
+  const mm = dv * 1000;
+  return <><span className="text-[#cdd9e5]">{mm.toFixed(2)}</span><span className="text-[#484f58] text-[10px] ml-0.5 font-normal">mm/s</span></>;
 }
 
 function LiveCountdown({ tca }: { tca: string }) {
@@ -193,13 +209,10 @@ export default function ConjunctionList({
 
               {/* Delta-V or DEBRIS */}
               <div className="text-right font-data text-[12px]">
-                {item.delta_v_mps !== undefined ? (
-                  <>
-                    <span className="text-[#cdd9e5]">{item.delta_v_mps.toFixed(2)}</span>
-                    <span className="text-[#484f58] text-[10px] ml-0.5 font-normal">m/s</span>
-                  </>
-                ) : eitherDebris ? (
+                {eitherDebris ? (
                   <span className="text-[#484f58] text-[11px]">N/A</span>
+                ) : item.delta_v_mps !== undefined ? (
+                  formatDeltaV(item.delta_v_mps)
                 ) : (
                   <span className="text-[#7d8590] text-[11px]">—</span>
                 )}

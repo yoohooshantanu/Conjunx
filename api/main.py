@@ -221,18 +221,47 @@ async def list_conjunctions():
 
         cdm_id = str(latest.get("CDM_ID") or latest.get("MESSAGE_ID", ""))
         pc = float(latest.get("PC") or latest.get("COLLISION_PROBABILITY") or 1e-7)
+        miss = float(latest.get("MISS_DISTANCE") or latest.get("MIN_RNG") or 1000.0)
 
-        miss_raw = latest.get("MISS_DISTANCE")
-        if miss_raw is None:
-            miss_raw = latest.get("MIN_RNG")
-        miss = float(miss_raw) if miss_raw is not None else 9999.0
+        # Identify if maneuver is even possible (SAT1 must be a payload)
+        type_1 = str(latest.get("SAT1_OBJECT_TYPE") or latest.get("SAT_1_OBJECT_TYPE") or "").upper()
+        type_2 = str(latest.get("SAT2_OBJECT_TYPE") or latest.get("SAT_2_OBJECT_TYPE") or "").upper()
+        
+        debris_types = {"DEBRIS", "ROCKET BODY", "TBA", "UNKNOWN", ""}
+        sat1_can_maneuver = type_1 not in debris_types
 
-        # Quick risk score without full processing
+        # Attempt a quick maneuver solution to show Projected ΔV in the list view
+        projected_dv = None
+        if sat1_can_maneuver:
+            try:
+                from engine.processor import _parse_tca
+                from engine.maneuver import ConjunctionEvent, OrbitalState, solve_conjunction_maneuver
+                import numpy as np
+
+                tca = _parse_tca(latest)
+                primary_state = OrbitalState(
+                    position_eci=[6_771_000.0, 0.0, 0.0],
+                    velocity_eci=[0.0, 7_670.0, 0.0],
+                    epoch=tca,
+                )
+                event = ConjunctionEvent(
+                    tca=tca,
+                    miss_distance=miss,
+                    pc=pc,
+                    combined_covariance=np.diag([500**2, 500**2, 100**2]),
+                    primary=primary_state,
+                )
+                solution = solve_conjunction_maneuver(event)
+                projected_dv = solution.delta_v_mps
+            except Exception:
+                pass
+
+        # Quick risk score
         risk = score_conjunction(
             latest,
-            maneuver={"delta_v_mps": 0},
-            satcat_1={"OBJECT_TYPE": latest.get("SAT1_OBJECT_TYPE", "UNKNOWN")},
-            satcat_2={"OBJECT_TYPE": latest.get("SAT2_OBJECT_TYPE", "UNKNOWN")},
+            maneuver={"delta_v_mps": projected_dv or 0},
+            satcat_1={"OBJECT_TYPE": type_1},
+            satcat_2={"OBJECT_TYPE": type_2},
         )
 
         # Build Pc evolution history (all CDMs for this pair)
@@ -251,8 +280,8 @@ async def list_conjunctions():
             "sat2_name": latest.get("SAT_2_NAME", latest.get("SAT2_OBJECT_NAME", "?")),
             "sat1_id": str(latest.get("SAT_1_ID") or latest.get("SAT1_NORAD_CAT_ID") or ""),
             "sat2_id": str(latest.get("SAT_2_ID") or latest.get("SAT2_NORAD_CAT_ID") or ""),
-            "sat1_object_type": latest.get("SAT1_OBJECT_TYPE", latest.get("SAT_1_OBJECT_TYPE", "")),
-            "sat2_object_type": latest.get("SAT2_OBJECT_TYPE", latest.get("SAT_2_OBJECT_TYPE", "")),
+            "sat1_object_type": type_1,
+            "sat2_object_type": type_2,
             "tca": latest.get("TCA", ""),
             "miss_distance": miss,
             "pc": pc,
@@ -261,6 +290,7 @@ async def list_conjunctions():
             "recommended_action": risk.recommended_action,
             "cdm_count": len(group),
             "pc_history": pc_history,
+            "delta_v_mps": projected_dv,
         })
 
     # Sort by risk score descending
