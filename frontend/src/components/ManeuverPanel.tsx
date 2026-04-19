@@ -36,7 +36,7 @@ function DataRow({ label, value, unit }: { label: string; value: string; unit?: 
   );
 }
 
-function formatDeltaV(dv: number): JSX.Element {
+function formatDeltaV(dv: number) {
   if (dv === 0) return <><span className="font-data text-[#e6edf3]">0.00</span><span className="text-[#484f58] ml-0.5">m/s</span></>;
   
   if (dv >= 0.1) {

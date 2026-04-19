@@ -47,7 +47,7 @@ function isDebris(objectType: string | undefined): boolean {
   return t.includes("DEBRIS") || t.includes("DEB") || t === "TBA" || t.includes("ROCKET BODY") || t.includes("R/B");
 }
 
-function formatDeltaV(dv: number): JSX.Element {
+function formatDeltaV(dv: number) {
   if (dv === 0) return <><span className="text-[#484f58]">0.00</span><span className="text-[#484f58] text-[10px] ml-0.5 font-normal">m/s</span></>;
   
   if (dv >= 0.1) {
