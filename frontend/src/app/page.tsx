@@ -1,4 +1,5 @@
 import { fetchConjunctions } from "@/lib/api";
+import type { ConjunctionSummary } from "@/lib/api";
 import ConjunctionList from "@/components/ConjunctionList";
 
 export const dynamic = "force-dynamic";
@@ -32,15 +33,15 @@ function ListFallback() {
 }
 
 async function ConjunctionsData() {
-  let conjunctions = [];
+  let conjunctions: ConjunctionSummary[] = [];
   try {
     conjunctions = await fetchConjunctions();
   } catch (e) {
     console.error(e);
   }
 
-  const critCount = conjunctions.filter((c: any) => c.risk_level === "CRITICAL").length;
-  const highCount = conjunctions.filter((c: any) => c.risk_level === "HIGH").length;
+  const critCount = conjunctions.filter((c) => c.risk_level === "CRITICAL").length;
+  const highCount = conjunctions.filter((c) => c.risk_level === "HIGH").length;
   const totalCount = conjunctions.length;
 
   return (

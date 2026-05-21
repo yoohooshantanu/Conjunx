@@ -21,7 +21,7 @@ from engine.maneuver import (
     OrbitalState,
     solve_conjunction_maneuver,
 )
-from engine.propagator import propagate_to_epoch
+from engine.propagator import propagate_to_epoch, propagate_orbit_track
 from engine.pc_calculator import compute_pc_for_cdm, PcResult
 
 logger = logging.getLogger(__name__)
@@ -196,7 +196,6 @@ async def process_conjunction(
             target_miss_distance_m=solution.target_miss_distance_m,
         )
 
-    from engine.propagator import propagate_orbit_track
     orbit_track_1 = []
     orbit_track_2 = []
     if norad_1 and norad_1 in tle_map:

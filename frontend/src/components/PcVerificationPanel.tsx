@@ -84,19 +84,19 @@ export default function PcVerificationPanel({ cdmId }: { cdmId: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-
-    fetchPcAnalysis(cdmId)
-      .then((res) => {
+    const run = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetchPcAnalysis(cdmId);
         if (!cancelled) setData(res);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err.message);
-      })
-      .finally(() => {
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Unknown error");
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    };
+    void run();
 
     return () => { cancelled = true; };
   }, [cdmId]);

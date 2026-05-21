@@ -10,17 +10,31 @@ import ManeuverPanel from "@/components/ManeuverPanel";
 import CesiumWrapper from "@/components/CesiumWrapper";
 import ManeuverTradeoff from "@/components/ManeuverTradeoff";
 import PcVerificationPanel from "@/components/PcVerificationPanel";
+import type { ConjunctionDetail, PcHistoryPoint } from "@/lib/api";
 
 async function AIExplainerServer({ cdmId }: { cdmId: string }) {
+  let explanation: unknown = null;
   try {
-    const explanation = await fetchAiExplanation(cdmId);
-    return <AIExplainer explanation={explanation} />;
-  } catch (e) {
-    return <div className="px-4 py-3 text-[#7d8590] text-[12px]">AI Brief currently unavailable.</div>;
+    explanation = await fetchAiExplanation(cdmId);
+  } catch {
+    explanation = null;
   }
+  if (!explanation) return <div className="px-4 py-3 text-[#7d8590] text-[12px]">AI Brief currently unavailable.</div>;
+  return <AIExplainer explanation={explanation as Parameters<typeof AIExplainer>[0]["explanation"]} />;
 }
 
-function SatMetadataPanel({ title, data, fields }: { title: string; data: Record<string, any>; fields: string[] }) {
+type JsonMap = Record<string, unknown>;
+const asNumber = (value: unknown, fallback: number): number => {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : fallback;
+};
+const asString = (value: unknown, fallback = ""): string => {
+  if (typeof value === "string") return value;
+  if (value === null || value === undefined) return fallback;
+  return String(value);
+};
+
+function SatMetadataPanel({ title, data, fields }: { title: string; data: JsonMap; fields: string[] }) {
   return (
     <div className="border border-[#30363d] bg-[#161b22]">
       <div className="px-3 py-1.5 border-b border-[#21262d] text-[10px] text-[#484f58] uppercase tracking-[0.08em] font-semibold">
@@ -44,8 +58,8 @@ function SatMetadataPanel({ title, data, fields }: { title: string; data: Record
 
 export default async function ConjunctionDetail({ params }: { params: Promise<{ cdm_id: string }> }) {
   const { cdm_id } = await params;
-  let data: any;
-  let pcHistory: any[] = [];
+  let data: ConjunctionDetail;
+  let pcHistory: PcHistoryPoint[] = [];
 
   const [dataResult, pcHistoryResult] = await Promise.allSettled([
     fetchConjunctionDetail(cdm_id),
@@ -69,14 +83,17 @@ export default async function ConjunctionDetail({ params }: { params: Promise<{ 
     pcHistory = pcHistoryResult.value;
   }
 
-  const tca = data.TCA || data.tca || new Date().toISOString();
-  const missDistance = parseFloat(data.MISS_DISTANCE || data.MIN_RNG) || 1000;
-  const riskLevel = data.risk?.level || "UNKNOWN";
-  const sat1Name = data.satcat_1?.OBJECT_NAME || data.SAT_1_NAME || data.SAT1_OBJECT_NAME || "SAT-1";
-  const sat2Name = data.satcat_2?.OBJECT_NAME || data.SAT_2_NAME || data.SAT2_OBJECT_NAME || "SAT-2";
-  const pc = parseFloat(data.PC) || 0;
-  const norad1 = data.SAT_1_ID || data.SAT1_NORAD_CAT_ID || "";
-  const norad2 = data.SAT_2_ID || data.SAT2_NORAD_CAT_ID || "";
+  const satcat1 = (data.satcat_1 || {}) as JsonMap;
+  const satcat2 = (data.satcat_2 || {}) as JsonMap;
+  const tca = asString(data.TCA ?? data.tca, new Date().toISOString());
+  const missDistance = asNumber(data.MISS_DISTANCE ?? data.MIN_RNG, 1000);
+  const risk = (data.risk || {}) as { level?: string };
+  const riskLevel = risk.level || "UNKNOWN";
+  const sat1Name = asString(satcat1.OBJECT_NAME ?? data.SAT_1_NAME ?? data.SAT1_OBJECT_NAME, "SAT-1");
+  const sat2Name = asString(satcat2.OBJECT_NAME ?? data.SAT_2_NAME ?? data.SAT2_OBJECT_NAME, "SAT-2");
+  const pc = asNumber(data.PC, 0);
+  const norad1 = asString(data.SAT_1_ID ?? data.SAT1_NORAD_CAT_ID, "");
+  const norad2 = asString(data.SAT_2_ID ?? data.SAT2_NORAD_CAT_ID, "");
 
   const riskColor: Record<string, string> = {
     CRITICAL: "text-[#f85149]",
@@ -90,8 +107,8 @@ export default async function ConjunctionDetail({ params }: { params: Promise<{ 
   const sat2Fields = [...sat1Fields];
 
   // Build sat metadata from satcat data or raw CDM fields
-  const sat1Data: Record<string, any> = { ...data.satcat_1 };
-  const sat2Data: Record<string, any> = { ...data.satcat_2 };
+  const sat1Data: JsonMap = { ...satcat1 };
+  const sat2Data: JsonMap = { ...satcat2 };
 
   // Populate from CDM root if satcat is sparse
   if (!sat1Data.OBJECT_NAME) sat1Data.OBJECT_NAME = sat1Name;
@@ -106,7 +123,7 @@ export default async function ConjunctionDetail({ params }: { params: Promise<{ 
     const t = type.toUpperCase();
     return t.includes("DEBRIS") || t.includes("DEB") || t === "TBA";
   };
-  const isBothDebris = isDebris(sat1Data.OBJECT_TYPE) && isDebris(sat2Data.OBJECT_TYPE);
+  const isBothDebris = isDebris(asString(sat1Data.OBJECT_TYPE)) && isDebris(asString(sat2Data.OBJECT_TYPE));
 
   return (
     <main className="min-h-screen flex flex-col h-screen">
@@ -160,8 +177,8 @@ export default async function ConjunctionDetail({ params }: { params: Promise<{ 
             tca={tca}
             missDistance={missDistance}
             riskLevel={riskLevel}
-            covarianceRadii1={data.covariance_radii_1}
-            covarianceRadii2={data.covariance_radii_2}
+            covarianceRadii1={data.covariance_radii_1 as number[] | undefined}
+            covarianceRadii2={data.covariance_radii_2 as number[] | undefined}
           />
         </div>
 

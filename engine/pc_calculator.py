@@ -19,12 +19,13 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 
 import numpy as np
 from scipy import integrate
-from sgp4.api import Satrec, jday
+
+from engine.propagator import propagate_tle_to_epoch as _propagate_tle
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,7 @@ class PcResult:
     sensitivity_analysis: dict
 
 
-# SGP4 propagation
+# SGP4 propagation — delegates to engine.propagator to avoid duplication
 
 def propagate_tle_to_epoch(
     line1: str, line2: str, target_time: datetime
@@ -83,72 +84,54 @@ def propagate_tle_to_epoch(
     """
     Propagate a TLE to a target epoch using SGP4.
 
-    Parameters
-    ----------
-    line1 : str – TLE line 1
-    line2 : str – TLE line 2
-    target_time : datetime – target epoch (UTC)
-
-    Returns
-    -------
-    Tuple of (StateVector or None, tle_epoch as datetime or None).
-    Returns (None, None) if propagation fails.
+    Delegates to the shared propagator and converts OrbitalState → StateVector
+    for use in the Pc computation pipeline.
     """
-    try:
-        sat = Satrec.twoline2rv(line1, line2)
-    except Exception as exc:
-        logger.error("Failed to parse TLE for Pc calc: %s", exc)
-        return None, None
-
-    # Parse TLE epoch from the Satrec object
-    try:
-        # sat.jdsatepoch + sat.jdsatepochF gives full Julian date of TLE epoch
-        from sgp4.api import jday
-        # Reconstruct TLE epoch from jdsatepoch
-        # sgp4 stores epoch as jdsatepoch (integer part) and jdsatepochF (fractional)
-        jd_epoch = sat.jdsatepoch + sat.jdsatepochF
-        # Convert Julian Date to datetime
-        # JD = 2451545.0 corresponds to 2000-01-01 12:00:00 UTC
-        j2000_jd = 2451545.0
-        delta_days = jd_epoch - j2000_jd
-        from datetime import timedelta
-        tle_epoch = datetime(2000, 1, 1, 12, 0, 0, tzinfo=timezone.utc) + timedelta(days=delta_days)
-    except Exception as exc:
-        logger.warning("Could not parse TLE epoch: %s", exc)
-        tle_epoch = None
-
-    # Ensure UTC timezone
-    if target_time.tzinfo is None:
-        target_time = target_time.replace(tzinfo=timezone.utc)
-
-    jd, fr = jday(
-        target_time.year,
-        target_time.month,
-        target_time.day,
-        target_time.hour,
-        target_time.minute,
-        target_time.second + target_time.microsecond / 1e6,
-    )
-
-    error_code, position_km, velocity_kms = sat.sgp4(jd, fr)
-
-    if error_code != 0:
-        logger.warning(
-            "SGP4 Pc-calc error code %d at target %s",
-            error_code, target_time.isoformat(),
-        )
+    orbital_state, tle_epoch = _propagate_tle(line1, line2, target_time)
+    if orbital_state is None:
         return None, tle_epoch
 
-    # Convert km → m and km/s → m/s
-    position_m = np.array([p * 1000.0 for p in position_km])
-    velocity_ms = np.array([v * 1000.0 for v in velocity_kms])
-
     state = StateVector(
-        position=position_m,
-        velocity=velocity_ms,
-        epoch=target_time,
+        position=np.array(orbital_state.position_eci),
+        velocity=np.array(orbital_state.velocity_eci),
+        epoch=orbital_state.epoch,
     )
     return state, tle_epoch
+
+
+# RSW-to-ECI rotation
+
+def rsw_to_eci_rotation(position: np.ndarray, velocity: np.ndarray) -> np.ndarray:
+    """
+    Build the 3×3 rotation matrix from RSW (radial, along-track, cross-track)
+    to ECI frame using position and velocity vectors.
+
+    R-axis (radial): r_hat = r / |r|
+    W-axis (cross-track): w_hat = (r × v) / |r × v|
+    S-axis (along-track): s_hat = w_hat × r_hat
+
+    Returns R such that C_eci = R @ C_rsw @ R.T
+    """
+    r = np.asarray(position, dtype=float)
+    v = np.asarray(velocity, dtype=float)
+
+    r_norm = np.linalg.norm(r)
+    if r_norm < 1e-10:
+        return np.eye(3)
+
+    r_hat = r / r_norm
+
+    h = np.cross(r, v)  # angular momentum
+    h_norm = np.linalg.norm(h)
+    if h_norm < 1e-10:
+        return np.eye(3)
+
+    w_hat = h / h_norm          # cross-track
+    s_hat = np.cross(w_hat, r_hat)  # along-track
+
+    # Rotation matrix: columns are RSW basis vectors expressed in ECI
+    R = np.column_stack([r_hat, s_hat, w_hat])
+    return R
 
 
 # Conjunction geometry
@@ -232,22 +215,14 @@ _COVARIANCE_TABLE = {
 _DEFAULT_SIGMAS = (60, 600, 60)
 
 
-def get_default_covariance(rcs_size: str, object_type: str) -> np.ndarray:
+def get_default_covariance_rsw(rcs_size: str, object_type: str) -> np.ndarray:
     """
-    Return a 3×3 diagonal covariance matrix (meters²) based on object type
-    and RCS size category.
+    Return a 3×3 diagonal covariance matrix in RSW frame (meters²) based
+    on object type and RCS size category.
 
     Uses anisotropic RSW-axis diagonal: diag([σ_r², σ_s², σ_w²]).
     The along-track sigma is always largest; radial and cross-track are
-    tighter.  When projected onto the conjunction plane via T @ C @ T.T,
-    the projection naturally selects the components relevant to the
-    encounter geometry.
-
-    Note: A proper implementation would rotate this RSW covariance into ECI
-    using the satellite state vectors.  Without rotation, the axis-to-ECI
-    mapping is approximate, but the anisotropic representation is far more
-    accurate than a spherical average because the projection selects
-    realistic component magnitudes.
+    tighter.
     """
     obj = object_type.upper().strip() if object_type else ""
     size = rcs_size.upper().strip() if rcs_size else ""
@@ -272,6 +247,31 @@ def get_default_covariance(rcs_size: str, object_type: str) -> np.ndarray:
     )
 
     return np.diag([sigma_r**2, sigma_s**2, sigma_w**2])
+
+
+def get_default_covariance(
+    rcs_size: str, object_type: str,
+    position: Optional[np.ndarray] = None,
+    velocity: Optional[np.ndarray] = None,
+) -> np.ndarray:
+    """
+    Return a 3×3 covariance matrix in ECI frame (meters²).
+
+    If position and velocity are provided, properly rotates the RSW-frame
+    covariance into ECI using the RSW→ECI rotation matrix.
+    Otherwise falls back to the unrotated RSW diagonal (legacy behavior).
+    """
+    cov_rsw = get_default_covariance_rsw(rcs_size, object_type)
+
+    if position is not None and velocity is not None:
+        R = rsw_to_eci_rotation(position, velocity)
+        cov_eci = R @ cov_rsw @ R.T
+        logger.debug("Rotated RSW→ECI covariance for %s/%s", object_type, rcs_size)
+        return cov_eci
+
+    # Fallback: return RSW diagonal as-is (approximate)
+    logger.debug("Using unrotated RSW covariance (no state vector available)")
+    return cov_rsw
 
 
 # Covariance projection
@@ -573,8 +573,14 @@ def compute_pc_for_cdm(
     logger.info("Object1 lookup: type=%s, rcs_size=%s", obj_type1, rcs_size1)
     logger.info("Object2 lookup: type=%s, rcs_size=%s", obj_type2, rcs_size2)
 
-    cov1 = get_default_covariance(rcs_size1, obj_type1)
-    cov2 = get_default_covariance(rcs_size2, obj_type2)
+    cov1 = get_default_covariance(
+        rcs_size1, obj_type1,
+        position=state1.position, velocity=state1.velocity,
+    )
+    cov2 = get_default_covariance(
+        rcs_size2, obj_type2,
+        position=state2.position, velocity=state2.velocity,
+    )
 
     # Project covariance to conjunction plane
     cov_2d = project_covariance_to_conjunction_plane(cov1, cov2, geometry)

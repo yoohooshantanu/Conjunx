@@ -5,8 +5,14 @@ import * as Cesium from "cesium";
 import "cesium/Build/Cesium/Widgets/widgets.css";
 import { API_URL } from "@/lib/api";
 
+declare global {
+  interface Window {
+    CESIUM_BASE_URL?: string;
+  }
+}
+
 if (typeof window !== "undefined") {
-  (window as any).CESIUM_BASE_URL = "/Cesium";
+  window.CESIUM_BASE_URL = "/Cesium";
 }
 
 Cesium.Ion.defaultAccessToken = process.env.NEXT_PUBLIC_CESIUM_TOKEN || "";
@@ -14,8 +20,11 @@ Cesium.Ion.defaultAccessToken = process.env.NEXT_PUBLIC_CESIUM_TOKEN || "";
 // FIX: Disable ImageBitmap in Chromium browsers. It has known bugs with Cesium's 
 // Texture Atlas allocation that cause text labels and points to render as static/noise boxes!
 if (typeof Cesium !== "undefined" && Cesium.FeatureDetection) {
-  // @ts-ignore
-  (Cesium.FeatureDetection as any).supportsImageBitmapOptions = false;
+  (
+    Cesium.FeatureDetection as unknown as {
+      supportsImageBitmapOptions?: boolean;
+    }
+  ).supportsImageBitmapOptions = false;
 }
 
 interface CesiumViewerProps {
@@ -37,6 +46,8 @@ export default function CesiumViewer({
 }: CesiumViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Cesium.Viewer | null>(null);
+  const focusTCARef = useRef<(() => void) | null>(null);
+  const ghostHandlerRef = useRef<((e: Event) => void) | null>(null);
 
   useEffect(() => {
     if (!containerRef.current || viewerRef.current) return;
@@ -233,7 +244,7 @@ export default function CesiumViewer({
             }
           });
 
-          const tcaEntity = viewer.entities.add({
+          viewer.entities.add({
             position: tcaPos,
             point: {
               pixelSize: new Cesium.CallbackProperty(() => isHighlight ? 30 : 15, false),
@@ -310,9 +321,9 @@ export default function CesiumViewer({
              });
           };
           flyToTCA();
-          
-          // Expose function for UI button
-          (window as any).focusTCA = flyToTCA;
+
+          // Store in ref for the focus button
+          focusTCARef.current = flyToTCA;
         }
 
         // ---- Clock: animate along orbit ----
@@ -381,9 +392,12 @@ export default function CesiumViewer({
            });
         };
 
-        const handleGhostEvent = (e: any) => updateGhostOrbit(e.detail);
-        window.addEventListener("updateGhostOrbit", handleGhostEvent);
-        (window as any).__conjunxGhostHandler = handleGhostEvent;
+        const handleGhostEvent = (e: Event) => {
+          const detail = (e as CustomEvent<number>).detail;
+          updateGhostOrbit(Number(detail) || 0);
+        };
+        window.addEventListener("updateGhostOrbit", handleGhostEvent as EventListener);
+        ghostHandlerRef.current = handleGhostEvent;
       })
       .catch((err) => {
         console.warn("Orbit data fetch failed:", err);
@@ -391,13 +405,13 @@ export default function CesiumViewer({
 
     return () => {
       if (viewerRef.current && !viewerRef.current.isDestroyed()) {
-         try { viewerRef.current.destroy(); } catch(e){}
+         try { viewerRef.current.destroy(); } catch {}
       }
       viewerRef.current = null;
-      if ((window as any).focusTCA) delete (window as any).focusTCA;
-      if ((window as any).__conjunxGhostHandler) {
-         window.removeEventListener("updateGhostOrbit", (window as any).__conjunxGhostHandler);
-         delete (window as any).__conjunxGhostHandler;
+      focusTCARef.current = null;
+      if (ghostHandlerRef.current) {
+         window.removeEventListener("updateGhostOrbit", ghostHandlerRef.current);
+         ghostHandlerRef.current = null;
       }
     };
   }, [tca, missDistance, riskLevel, cdmId, covarianceRadii1, covarianceRadii2]);
@@ -406,7 +420,7 @@ export default function CesiumViewer({
     <div className="relative w-full h-full min-h-[400px]">
       <div ref={containerRef} className="absolute inset-0" />
       <button 
-        onClick={() => { if ((window as any).focusTCA) (window as any).focusTCA(); }}
+        onClick={() => { if (focusTCARef.current) focusTCARef.current(); }}
         className="absolute bottom-3 left-3 z-10 px-3 py-1.5 bg-[#161b22] border border-[#30363d] text-[11px] font-data text-[#7d8590] hover:bg-[#1c2128] hover:text-[#e6edf3] transition-colors uppercase tracking-wider"
       >
         Focus TCA

@@ -118,8 +118,8 @@ export default function ConjunctionList({
 
   return (
     <div className="w-full">
-      {/* Table header */}
-      <div className="grid grid-cols-[80px_1fr_100px_110px_120px_90px] gap-x-3 px-4 py-2 text-[10px] text-[#484f58] uppercase tracking-[0.08em] font-semibold border-b border-[#21262d]">
+      {/* Table header — hidden on mobile */}
+      <div className="hidden lg:grid grid-cols-[80px_1fr_100px_110px_120px_90px] gap-x-3 px-4 py-2 text-[10px] text-[#484f58] uppercase tracking-[0.08em] font-semibold border-b border-[#21262d]">
         <div>Risk</div>
         <div>Objects</div>
         <div className="text-right">Miss Dist</div>
@@ -146,17 +146,28 @@ export default function ConjunctionList({
             <div
               key={item.cdm_id}
               onClick={() => router.push(`/conjunction/${item.cdm_id}`)}
-              className={`grid grid-cols-[80px_1fr_100px_110px_120px_90px] gap-x-3 items-center px-4 py-[7px] ${borderClass} border-b border-[#21262d] bg-[#0d1117] hover:bg-[#161b22] cursor-pointer transition-colors duration-75`}
+              className={`
+                lg:grid lg:grid-cols-[80px_1fr_100px_110px_120px_90px] lg:gap-x-3 lg:items-center
+                flex flex-col gap-2
+                px-4 py-[7px] lg:py-[7px] py-3
+                ${borderClass} border-b border-[#21262d] bg-[#0d1117] hover:bg-[#161b22] cursor-pointer transition-colors duration-75
+              `}
             >
               {/* Risk */}
-              <div
-                className={`font-data text-[11px] font-normal opacity-85 uppercase ${textColor}`}
-              >
-                {item.risk_level}
+              <div className="flex lg:block items-center gap-2">
+                <div
+                  className={`font-data text-[11px] font-normal opacity-85 uppercase ${textColor}`}
+                >
+                  {item.risk_level}
+                </div>
+                {/* Mobile: show objects inline with risk */}
+                <div className="lg:hidden text-[13px] text-[#cdd9e5] truncate">
+                  {item.sat1_name} <span className="text-[10px] text-[#484f58]">×</span> {item.sat2_name}
+                </div>
               </div>
 
-              {/* Objects */}
-              <div className="min-w-0">
+              {/* Objects — hidden on mobile (shown inline with risk) */}
+              <div className="min-w-0 hidden lg:block">
                 <div className="flex items-center gap-1.5">
                   <span className="text-[13px] text-[#cdd9e5] truncate">
                     {item.sat1_name}
@@ -178,8 +189,28 @@ export default function ConjunctionList({
                 )}
               </div>
 
-              {/* Miss Distance */}
-              <div className="text-right font-data text-[12px] text-[#7d8590]">
+              {/* Mobile: stats row */}
+              <div className="flex lg:hidden items-center justify-between gap-3 text-[12px]">
+                <div className="font-data text-[#7d8590]">
+                  {item.miss_distance < 1000
+                    ? <>{item.miss_distance.toFixed(0)}<span className="text-[10px] text-[#484f58] ml-0.5">m</span></>
+                    : <>{(item.miss_distance / 1000).toFixed(1)}<span className="text-[10px] text-[#484f58] ml-0.5">km</span></>
+                  }
+                </div>
+                <div className="font-data text-[#7d8590]">{formatPc(item.pc)}</div>
+                <LiveCountdown tca={item.tca} />
+                <div className="font-data">
+                  {eitherDebris
+                    ? <span className="text-[#484f58] text-[11px]">N/A</span>
+                    : item.delta_v_mps !== undefined
+                      ? formatDeltaV(item.delta_v_mps)
+                      : <span className="text-[#7d8590] text-[11px]">—</span>
+                  }
+                </div>
+              </div>
+
+              {/* Desktop: Miss Distance */}
+              <div className="text-right font-data text-[12px] text-[#7d8590] hidden lg:block">
                 {item.miss_distance < 1000 ? (
                   <>
                     {item.miss_distance.toFixed(0)}
@@ -197,18 +228,18 @@ export default function ConjunctionList({
                 )}
               </div>
 
-              {/* Pc */}
-              <div className="text-right font-data text-[12px] text-[#7d8590]">
+              {/* Desktop: Pc */}
+              <div className="text-right font-data text-[12px] text-[#7d8590] hidden lg:block">
                 {formatPc(item.pc)}
               </div>
 
-              {/* TCA Countdown */}
-              <div className="text-right text-[12px]">
+              {/* Desktop: TCA Countdown */}
+              <div className="text-right text-[12px] hidden lg:block">
                 <LiveCountdown tca={item.tca} />
               </div>
 
-              {/* Delta-V or DEBRIS */}
-              <div className="text-right font-data text-[12px]">
+              {/* Desktop: Delta-V or DEBRIS */}
+              <div className="text-right font-data text-[12px] hidden lg:block">
                 {eitherDebris ? (
                   <span className="text-[#484f58] text-[11px]">N/A</span>
                 ) : item.delta_v_mps !== undefined ? (

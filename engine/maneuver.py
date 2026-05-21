@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 import logging
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import numpy as np
@@ -88,15 +88,29 @@ def _required_delta_v(miss_distance: float, target_miss: float,
     """
     Estimate ΔV needed to shift the miss distance from current to target.
 
-    Uses the linear mapping:  Δmiss ≈ ΔV × time_to_tca  (for small burns
-    applied along-track well before TCA).
+    Uses the Clohessy-Wiltshire along-track drift approximation:
+        Δmiss ≈ ΔV × (3/2) × n × t²
+    where n = V/r ≈ V²/μ^(1/3) is the mean motion.
+
+    For small burns applied along-track well before TCA, this is a better
+    physical model than the linear scaling.
     """
-    delta_miss = target_miss - miss_distance
+    delta_miss = abs(target_miss - miss_distance)
     if time_to_tca_s <= 0:
-        return abs(delta_miss) / max(velocity, 1.0)
-    # Mapping radial miss distance approximation from along-track drift.
-    # We use empirical LEO geometric mapping ~ (delta_v * t_tca * 100) / velocity
-    return abs(delta_miss) / (time_to_tca_s * (max(velocity, 1.0) / 100.0))
+        return delta_miss / max(velocity, 1.0)
+
+    # Approximate mean motion for LEO: n ≈ v / r
+    # At 400 km altitude: r ≈ 6.771e6 m
+    r_approx = MU_EARTH / max(velocity, 1.0) ** 2  # rough semi-major axis
+    r_approx = max(r_approx, R_EARTH + 200_000.0)   # floor at 200 km
+    n = math.sqrt(MU_EARTH / r_approx ** 3)          # rad/s
+
+    # CW: Δmiss ≈ (3/2) × n × t² × ΔV  →  ΔV = Δmiss / (1.5 × n × t²)
+    cw_factor = 1.5 * n * time_to_tca_s ** 2
+    if cw_factor > 0:
+        return delta_miss / cw_factor
+
+    return delta_miss / max(velocity, 1.0)
 
 
 def _estimate_pc_after(pc_before: float, miss_before: float,
@@ -175,7 +189,6 @@ def solve_conjunction_maneuver(
     burn_lead_s = burn_lead_hours * 3600.0
     burn_epoch = event.tca
     if time_to_tca_s > burn_lead_s:
-        from datetime import timedelta
         burn_epoch = event.tca - timedelta(seconds=burn_lead_s)
         effective_time = burn_lead_s
     else:
@@ -265,9 +278,13 @@ def evaluate_tradeoff(
     else:
         effective_time = min(max(real_time_to_tca_s, 1.0), burn_lead_s)
 
-    # Delta-V to Delta-Miss mapping (linear approximation)
+    # Delta-V to Delta-Miss mapping (CW along-track drift)
     velocity = event.primary.speed() if event.primary else 7_500.0
-    delta_miss = delta_v_mps * effective_time * (max(velocity, 1.0) / 100.0) ** -1
+    r_approx = MU_EARTH / max(velocity, 1.0) ** 2
+    r_approx = max(r_approx, R_EARTH + 200_000.0)
+    n = math.sqrt(MU_EARTH / r_approx ** 3)
+    cw_factor = 1.5 * n * effective_time ** 2
+    delta_miss = delta_v_mps * cw_factor if cw_factor > 0 else delta_v_mps * effective_time
     # Assume we always thrust optimally to increase miss distance
     new_miss_distance = event.miss_distance + delta_miss
 

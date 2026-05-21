@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type CurvePoint = {
   scale: number;
@@ -19,7 +19,7 @@ export default function PcSensitivityChart({ data }: { data: SensitivityData }) 
   const containerRef = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<{ x: number; y: number; scale: number; pc: number } | null>(null);
 
-  const curve = data.curve || [];
+  const curve = useMemo(() => data.curve ?? [], [data.curve]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -156,7 +156,7 @@ export default function PcSensitivityChart({ data }: { data: SensitivityData }) 
     ctx.font = "8px sans-serif";
     ctx.textAlign = "center";
     ctx.fillText("current", baseX, padT - 3);
-  }, [curve, hover]);
+  }, [curve]);
 
   // --- Mouse interaction ---
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -193,8 +193,6 @@ export default function PcSensitivityChart({ data }: { data: SensitivityData }) 
 
   // Find peak Pc and its scale
   const peakPt = curve.reduce((a, b) => b.pc > a.pc ? b : a, curve[0]);
-  const basePt = curve.find(p => p.scale === 1.0);
-
   return (
     <div ref={containerRef} className="px-4 py-3">
       <div className="flex items-center justify-between mb-1">

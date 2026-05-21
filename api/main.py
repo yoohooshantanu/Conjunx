@@ -14,8 +14,9 @@ import logging
 import os
 import time as _time
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
+import numpy as np
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,7 +24,8 @@ from pydantic import BaseModel
 
 from data.demo import get_sample_conjunction
 from data.fetcher import SpaceTrackFetcher
-from engine.processor import process_conjunction, get_fetcher
+from engine.maneuver import ConjunctionEvent, OrbitalState, solve_conjunction_maneuver, evaluate_tradeoff
+from engine.processor import process_conjunction, get_fetcher, DEFAULT_COVARIANCE
 from engine.risk_scorer import score_conjunction
 from ai.explainer import generate_explanation
 
@@ -78,7 +80,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:3000").split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -114,9 +116,6 @@ def _parse_tca_str(tca_str: str) -> datetime:
 
 def _build_event_from_result(result: dict):
     """Build a ConjunctionEvent from a process_conjunction result dict."""
-    from engine.maneuver import ConjunctionEvent, OrbitalState
-    import numpy as np
-
     tca = _parse_tca_str(result.get("TCA", ""))
     miss = float(result.get("MISS_DISTANCE") or result.get("MIN_RNG") or 1000.0)
     pc = float(result.get("PC") or result.get("COLLISION_PROBABILITY") or 1e-7)
@@ -140,21 +139,18 @@ def _build_event_from_result(result: dict):
         tca=tca,
         miss_distance=miss,
         pc=pc,
-        combined_covariance=np.diag([500**2, 500**2, 100**2]),
+        combined_covariance=DEFAULT_COVARIANCE,
         primary=primary_state,
     )
 
 
 def _build_event_from_dict(sample: dict):
     """Build a ConjunctionEvent from a demo/sample dict (has primary_state)."""
-    from engine.maneuver import ConjunctionEvent, OrbitalState
-    import numpy as np
-
     return ConjunctionEvent(
         tca=datetime.fromisoformat(sample["TCA"].replace("Z", "+00:00")),
         miss_distance=float(sample["MISS_DISTANCE"]),
         pc=float(sample["PC"]),
-        combined_covariance=np.diag([500**2, 500**2, 100**2]),
+        combined_covariance=DEFAULT_COVARIANCE,
         primary=OrbitalState(
             position_eci=sample["primary_state"]["position_eci"],
             velocity_eci=sample["primary_state"]["velocity_eci"],
@@ -235,8 +231,6 @@ async def list_conjunctions():
         if sat1_can_maneuver:
             try:
                 from engine.processor import _parse_tca
-                from engine.maneuver import ConjunctionEvent, OrbitalState, solve_conjunction_maneuver
-                import numpy as np
 
                 tca = _parse_tca(latest)
                 primary_state = OrbitalState(
@@ -248,13 +242,13 @@ async def list_conjunctions():
                     tca=tca,
                     miss_distance=miss,
                     pc=pc,
-                    combined_covariance=np.diag([500**2, 500**2, 100**2]),
+                    combined_covariance=DEFAULT_COVARIANCE,
                     primary=primary_state,
                 )
                 solution = solve_conjunction_maneuver(event)
                 projected_dv = solution.delta_v_mps
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Projected delta-v estimation failed for %s: %s", cdm_id, exc)
 
         # Quick risk score
         risk = score_conjunction(
@@ -566,8 +560,7 @@ async def recompute_maneuver(cdm_id: str, body: ManeuverRequest):
     Uses the cached pipeline result to extract the ConjunctionEvent,
     then re-solves only the maneuver with the new mass/Isp.
     """
-    from engine.maneuver import ConjunctionEvent, OrbitalState, solve_conjunction_maneuver
-    import numpy as np
+    from engine.maneuver import solve_conjunction_maneuver
 
     if cdm_id == "DEMO-001":
         sample = get_sample_conjunction()
@@ -600,12 +593,12 @@ async def evaluate_tradeoff_endpoint(cdm_id: str, body: TradeoffRequest):
     Uses the cached pipeline result so the full pipeline is NOT re-run
     on every slider tick.
     """
-    from engine.maneuver import evaluate_tradeoff
+    from engine.maneuver import evaluate_tradeoff as _evaluate_tradeoff
 
     if cdm_id == "DEMO-001":
         sample = get_sample_conjunction()
         event = _build_event_from_dict(sample)
-        return evaluate_tradeoff(event, body.delta_v_mps, body.satellite_mass_kg, body.isp)
+        return _evaluate_tradeoff(event, body.delta_v_mps, body.satellite_mass_kg, body.isp)
 
     try:
         result = await get_cached_conjunction(cdm_id)
@@ -617,7 +610,7 @@ async def evaluate_tradeoff_endpoint(cdm_id: str, body: TradeoffRequest):
 
     try:
         event = _build_event_from_result(result)
-        tradeoff_result = evaluate_tradeoff(
+        tradeoff_result = _evaluate_tradeoff(
             event,
             delta_v_mps=body.delta_v_mps,
             mass_kg=body.satellite_mass_kg,
@@ -628,9 +621,9 @@ async def evaluate_tradeoff_endpoint(cdm_id: str, body: TradeoffRequest):
         tradeoff_result["ghost_offset_m"] = body.delta_v_mps * tradeoff_result.get("effective_time_s", 21600.0)
 
         return tradeoff_result
-    except Exception as e:
-        import traceback
-        raise HTTPException(status_code=500, detail=traceback.format_exc())
+    except Exception as exc:
+        logger.exception("Tradeoff evaluation failed for %s", cdm_id)
+        raise HTTPException(status_code=500, detail=f"Tradeoff evaluation failed: {exc}")
 
 
 @app.get("/conjunctions/{cdm_id}/orbit-data")
@@ -652,7 +645,8 @@ async def orbit_data(cdm_id: str):
         # Cache miss — fetch CDMs first to populate cache, then retry
         try:
             await fetcher.fetch_cdms()
-        except Exception:
+        except Exception as exc:
+            logger.error("Failed to fetch CDMs for orbit-data %s: %s", cdm_id, exc)
             raise HTTPException(status_code=500, detail="Failed to fetch CDMs")
         cdm = fetcher.get_cached_cdm(cdm_id)
 
@@ -671,9 +665,8 @@ async def orbit_data(cdm_id: str):
                 tles = await fetcher.fetch_tles([int(norad)])
                 if tles:
                     tle_map[str(norad)] = tles[0]
-            except Exception as e:
-                logger.error(f"Failed to fetch TLEs for {norad}: {e}")
-                pass
+            except Exception as exc:
+                logger.error("Failed to fetch TLEs for %s: %s", norad, exc)
 
     def gmst_rad(jd_ut1: float, jd_frac: float) -> float:
         """Compute Greenwich Mean Sidereal Time in radians from Julian Date."""
@@ -709,7 +702,8 @@ async def orbit_data(cdm_id: str):
         """Propagate TLE and return ECEF positions."""
         try:
             sat = Satrec.twoline2rv(tle_line1, tle_line2)
-        except Exception:
+        except Exception as exc:
+            logger.warning("Invalid TLE in orbit-data propagation: %s", exc)
             return []
 
         if start.tzinfo is None:
@@ -736,8 +730,8 @@ async def orbit_data(cdm_id: str):
     if tca_str:
         try:
             tca_dt = datetime.fromisoformat(tca_str.replace("Z", "+00:00"))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Invalid TCA for %s (%s), using current UTC: %s", cdm_id, tca_str, exc)
 
     # Start propagation 10 minutes before TCA for context
     prop_start = tca_dt - timedelta(minutes=10)
@@ -768,8 +762,8 @@ async def orbit_data(cdm_id: str):
             err, pos_km, _ = sat.sgp4(jd, fr)
             if err == 0:
                 result["tca_position_ecef"] = teme_to_ecef(pos_km, jd, fr)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("SAT1 TCA position compute failed for %s: %s", cdm_id, exc)
 
     if norad_2_str and norad_2_str in tle_map:
         tle = tle_map[norad_2_str]
@@ -785,8 +779,8 @@ async def orbit_data(cdm_id: str):
             err, pos_km, _ = sat.sgp4(jd, fr)
             if err == 0:
                 result["sat2_tca_position_ecef"] = teme_to_ecef(pos_km, jd, fr)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("SAT2 TCA position compute failed for %s: %s", cdm_id, exc)
 
     return result
 
