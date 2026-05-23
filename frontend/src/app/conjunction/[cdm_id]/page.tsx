@@ -118,12 +118,14 @@ export default async function ConjunctionDetail({ params }: { params: Promise<{ 
   const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const tcaFormatted = `${months[tcaDate.getUTCMonth()]} ${tcaDate.getUTCDate()}, ${tcaDate.getUTCFullYear()} ${tcaDate.getUTCHours().toString().padStart(2,"0")}:${tcaDate.getUTCMinutes().toString().padStart(2,"0")}:${tcaDate.getUTCSeconds().toString().padStart(2,"0")} UTC`;
 
-  const isDebris = (type: string | undefined) => {
+  const isNonManeuverable = (type: string | undefined) => {
     if (!type) return false;
     const t = type.toUpperCase();
-    return t.includes("DEBRIS") || t.includes("DEB") || t === "TBA";
+    return t.includes("DEBRIS") || t.includes("DEB") || t === "TBA" || t.includes("ROCKET BODY") || t.includes("R/B");
   };
-  const isBothDebris = isDebris(asString(sat1Data.OBJECT_TYPE)) && isDebris(asString(sat2Data.OBJECT_TYPE));
+  const sat1CannotManeuver = isNonManeuverable(asString(sat1Data.OBJECT_TYPE));
+  const sat2CannotManeuver = isNonManeuverable(asString(sat2Data.OBJECT_TYPE));
+  const isEitherNonManeuverable = sat1CannotManeuver || sat2CannotManeuver;
 
   return (
     <main className="min-h-screen flex flex-col h-screen">
@@ -210,7 +212,7 @@ export default async function ConjunctionDetail({ params }: { params: Promise<{ 
           )}
 
           <div className="border-t border-[#30363d]">
-            <ManeuverTradeoff cdmId={cdm_id} disabled={isBothDebris} />
+            <ManeuverTradeoff cdmId={cdm_id} disabled={false} notFeasible={isEitherNonManeuverable} />
           </div>
 
           {/* AI Brief — plain paragraphs with thin top border separator */}

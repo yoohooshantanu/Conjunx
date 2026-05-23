@@ -294,9 +294,11 @@ function FuelBar({ fuelKg, maxFuel = 5 }: { fuelKg: number; maxFuel?: number }) 
 export default function ManeuverTradeoff({
   cdmId,
   disabled,
+  notFeasible,
 }: {
   cdmId: string;
   disabled?: boolean;
+  notFeasible?: boolean;
 }) {
   const [deltaV, setDeltaV] = useState(0.5);
   const [mass, setMass] = useState(500);
@@ -381,6 +383,15 @@ export default function ManeuverTradeoff({
         </div>
       ) : (
         <>
+          {/* Hypothetical warning when objects cannot maneuver */}
+          {notFeasible && (
+            <div className="flex items-center gap-2 px-2.5 py-1.5 mb-3 border border-[#d2992230] bg-[#d2992208] rounded-sm">
+              <span className="text-[11px]">⚠</span>
+              <span className="text-[10px] text-[#d29922] leading-snug">
+                Hypothetical — neither object has maneuver capability. Values below are for what-if analysis only.
+              </span>
+            </div>
+          )}
           {/* ΔV slider with active track */}
           <div className="mb-4">
             <div className="flex justify-between text-[11px] mb-2">
