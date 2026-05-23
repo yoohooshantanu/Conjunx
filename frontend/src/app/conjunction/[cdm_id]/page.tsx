@@ -125,7 +125,7 @@ export default async function ConjunctionDetail({ params }: { params: Promise<{ 
   };
   const sat1CannotManeuver = isNonManeuverable(asString(sat1Data.OBJECT_TYPE));
   const sat2CannotManeuver = isNonManeuverable(asString(sat2Data.OBJECT_TYPE));
-  const isEitherNonManeuverable = sat1CannotManeuver || sat2CannotManeuver;
+  const isBothNonManeuverable = sat1CannotManeuver && sat2CannotManeuver;
 
   return (
     <main className="min-h-screen flex flex-col h-screen">
@@ -212,7 +212,7 @@ export default async function ConjunctionDetail({ params }: { params: Promise<{ 
           )}
 
           <div className="border-t border-[#30363d]">
-            <ManeuverTradeoff cdmId={cdm_id} disabled={false} notFeasible={isEitherNonManeuverable} />
+            <ManeuverTradeoff cdmId={cdm_id} disabled={false} notFeasible={isBothNonManeuverable} />
           </div>
 
           {/* AI Brief — plain paragraphs with thin top border separator */}
